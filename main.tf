@@ -1,35 +1,17 @@
-resource "google_compute_network" "web-application-vpc" {
-  name = var.vpc_name
-  project = var.project_id
-  auto_create_subnetworks = false
+module "application_vpc" {
+  source = "./modules/vpc"
+  vpc_name = var.vpc_name
+  db_subnet_ip_cidr_range = var.db_subnet_ip_cidr_range
+  db_subnet_name = var.db_subnet_name
+  project_id = var.project_id
+  region = var.region
   routing_mode = var.routing_mode
-}
-
-// Web application subnet
-resource "google_compute_subnetwork" "web-application-subnet" {
-  name = var.web_app_subnet_name
-  project = var.project_id
-  region = var.region
-  network = google_compute_network.web-application-vpc.self_link
-  ip_cidr_range = var.web_app_subnet_ip_cidr_range
-}
-
-// database subnet
-resource "google_compute_subnetwork" "database-subnet" {
-  name = var.db_subnet_name
-  project = var.project_id
-  region = var.region
-  network = google_compute_network.web-application-vpc.self_link
-  ip_cidr_range = var.db_subnet_ip_cidr_range
-}
-
-// Web application route
-resource "google_compute_route" "web-application-route" {
-  name                   = "webapp-route"
-  network                = google_compute_network.web-application-vpc.self_link
-  dest_range             = var.web_app_route
-  next_hop_gateway       = google_compute_network.web-application-vpc.gateway_ipv4
-  priority               = 1999
-  depends_on             = [google_compute_subnetwork.web-application-subnet]
+  web_app_route = var.web_app_route
+  web_app_subnet_ip_cidr_range = var.web_app_subnet_ip_cidr_range
+  web_app_subnet_name = var.web_app_subnet_name
+  auto_create_subnetworks = var.auto_create_subnetworks
+  delete_default_routes_on_create = var.delete_default_routes_on_create
+  next_hop_gateway = var.next_hop_gateway
+  route_tags = var.route_tags
 }
 

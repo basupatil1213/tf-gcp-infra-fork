@@ -1,12 +1,8 @@
-variable "gcp_credentials_json" {
-    description = "The path to the GCP credentials JSON file"
-    type = string
-}
-
 variable "project_id" {
     description = "The project ID to deploy into"
     type = string
 }
+
 variable "region" {
     description = "The region to deploy into"
     type = string
@@ -20,7 +16,6 @@ variable "vpc_name" {
 variable "routing_mode" {
     description = "The routing mode for the VPC"
     type = string
-    default = "REGIONAL"
 }
 
 variable "web_app_subnet_name" {
@@ -47,21 +42,15 @@ variable "web_app_route" {
 }
 
 variable "auto_create_subnetworks" {
-    description = "Whether to create subnetworks in the VPC"
-    default = false
-    type = bool
+  description = "Whether to create subnetworks in the VPC"
+  default = false
+  type = bool
 }
 
 variable "delete_default_routes_on_create" {
-    description = "Whether to delete the default route on create"
-    default = true
-    type = bool
-}
-
-variable "next_hop_gateway" {
-    description = "The next hop gateway for the route"
-    type = string
-  
+  description = "Whether to delete the default route on create"
+  default = true
+  type = bool
 }
 
 variable "route_tags" {
@@ -69,4 +58,7 @@ variable "route_tags" {
   type = list(string)
 }
 
-
+variable "next_hop_gateway" {
+  description = "The next hop gateway for the route"
+  type = string
+}
