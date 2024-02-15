@@ -48,7 +48,7 @@ terraform apply
 The VPC setup is encapsulated within a separate module located in the modules/vpc directory. This modular approach promotes reusability and maintainability.
 
 ### Files
-main.tf: Main Terraform configuration file where the VPC module is called and the VPC and subnet are created.
+main.tf: Main Terraform configuration file where the VPC module is called and the VPC and subnet and routes are created.
 variables.tf: Defines input variables used by the Terraform configuration.
 providers.tf: Defines the GCP(Google Cloud Platform) providers.
 modules/vpc/: Directory containing the VPC module.
