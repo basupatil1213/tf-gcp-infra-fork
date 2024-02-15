@@ -1,8 +1,3 @@
-variable "gcp_credentials_json" {
-    description = "The path to the GCP credentials JSON file"
-    type = string
-}
-
 variable "project_id" {
     description = "The project ID to deploy into"
     type = string
