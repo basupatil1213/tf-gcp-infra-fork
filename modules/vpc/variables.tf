@@ -29,3 +29,27 @@ variable "vpcs" {
     }))
   }))
 }
+
+
+    # vm_instances = map(object({
+    #   vm_name = string
+    #   machine_type = string
+    #   zone = string
+    #   tags = list(string)
+    #   boot_disk = map(object({
+    #     initialize_params = map(string)
+    #   }))
+    # }))
+    # firewall_rules = map(object({
+    #   name = string
+    #   network = string
+    #   priority = number
+    #   direction = string
+    #   action = string
+    #   source_ranges = list(string)
+    #   target_tags = list(string)
+    #   allowed = list(object({
+    #     protocol = string
+    #     ports = list(string)
+    #   }))
+    # }))
