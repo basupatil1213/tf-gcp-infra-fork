@@ -26,7 +26,7 @@ variable "vm_tags" {
 
 variable "vm_image" {
   type = string
-  default = "custom-image-success-cloud"
+  default = "custom-webapp-img"
   
 }
 

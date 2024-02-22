@@ -18,24 +18,6 @@ locals {
       }
     ]
   ])
-  # vm_instances = flatten([
-  #   for vpc, vpc_config in var.vpcs : [
-  #     for vm, vm_config in vpc_config.vm_instances : {
-  #       vpc_name = vpc
-  #       vm_name = vm
-  #       vm_config = vm_config
-  #     }
-  #   ]
-  # ])
-  # firewall_rules = flatten([
-  #   for vpc, vpc_config in var.vpcs : [
-  #     for rule, rule_config in vpc_config.firewall_rules : {
-  #       vpc_name = vpc
-  #       rule_name = rule
-  #       rule_config = rule_config
-  #     }
-  #   ]
-  # ])
 }
 
 resource "google_compute_network" "vpcs" {
@@ -197,6 +179,64 @@ resource "google_compute_firewall" "allow-tcp-80-webapp" {
   }
   depends_on = [ google_compute_network.vpcs ]
 }
+
+# ssh firewall with varibles to block ssh login gcp
+variable "ssh_firewall_name" {
+  type = string
+  default = "allow-ssh-webapp"
+}
+
+variable "ssh_firewall_network" {
+  type = string
+  default = "web-application-vpc"
+  
+}
+
+variable "ssh_firwall_direction" {
+  type = string
+  default = "INGRESS"
+  
+}
+
+variable "ssh_firewall_source_ranges" {
+  type = list(string)
+  default = ["0.0.0.0/0"]
+}
+
+variable "ssh_firewall_target_tags" {
+  type = list(string)
+  default = ["webapp"]
+}
+
+variable "ssh_firewall_allowed_protocol" {
+  type = map(object({
+    protocol = string
+    ports = list(string)
+  })
+  )
+  default = {
+    tcp = {
+      protocol = "tcp"
+      ports = ["22"]
+    }
+  }
+}
+
+# block ssh login
+resource "google_compute_firewall" "allow-ssh-webapp" {
+  name    = var.ssh_firewall_name
+  network = var.ssh_firewall_network
+  priority = 1000
+  direction = var.ssh_firwall_direction
+  source_ranges = var.ssh_firewall_source_ranges
+  target_tags = var.ssh_firewall_target_tags
+  allow {
+    protocol = var.ssh_firewall_allowed_protocol.tcp.protocol
+    ports = var.ssh_firewall_allowed_protocol.tcp.ports
+  }
+  depends_on = [ google_compute_network.vpcs ]
+}
+
 
 
 # # create vm using cusomt image in webapp subnet
