@@ -223,14 +223,14 @@ variable "ssh_firewall_allowed_protocol" {
 }
 
 # block ssh login
-resource "google_compute_firewall" "allow-ssh-webapp" {
+resource "google_compute_firewall" "block-ssh-webapp" {
   name    = var.ssh_firewall_name
   network = var.ssh_firewall_network
   priority = 1000
   direction = var.ssh_firwall_direction
   source_ranges = var.ssh_firewall_source_ranges
   target_tags = var.ssh_firewall_target_tags
-  allow {
+  deny{
     protocol = var.ssh_firewall_allowed_protocol.tcp.protocol
     ports = var.ssh_firewall_allowed_protocol.tcp.ports
   }
