@@ -36,6 +36,7 @@ resource "google_compute_subnetwork" "subnet" {
   ip_cidr_range = each.value.subnet_config.ip_cidr_range
   network       = each.value.vpc_name
   depends_on = [ google_compute_network.vpcs ]
+  private_ip_google_access = true
 
 }
 
@@ -120,6 +121,14 @@ resource "google_compute_instance" "name" {
       network_tier = var.network_tier
     }
   }
+  # metadata_startup_script = templatefile("./scripts/db-cred-setup.sh",{
+  #   db_user = random_string.db_username.result,
+  #   db_password = random_password.db_password.result
+  #   mysql_port = "3306"
+  #   dialect = "mysql"
+  #   datbase = "web_app_db"
+  #   port = "8080"
+  # })
 }
 
 variable "firewall_name" {
@@ -236,6 +245,96 @@ resource "google_compute_firewall" "block-ssh-webapp" {
   }
   depends_on = [ google_compute_network.vpcs ]
 }
+
+// test private services access setup
+
+# [START compute_internal_ip_private_access]
+resource "google_compute_global_address" "default" {
+  provider     = google-beta
+  project      = var.project_id
+  name         = "global-psconnect-ip"
+  address_type = "INTERNAL"
+  purpose      = "VPC_PEERING"
+  network      = google_compute_network.vpcs["web-application-vpc"].self_link
+  prefix_length = 16
+}
+# [END compute_internal_ip_private_access]
+
+resource "google_service_networking_connection" "private_vpc_connection" {
+  provider = google-beta
+
+  network                 = google_compute_network.vpcs["web-application-vpc"].id
+  service                 = "servicenetworking.googleapis.com"
+  reserved_peering_ranges = [google_compute_global_address.default.name]
+  depends_on = [ google_compute_global_address.default ]
+}
+
+# [START compute_forwarding_rule_private_access]
+resource "google_compute_global_forwarding_rule" "default" {
+  provider              = google-beta
+  project               = google_compute_network.vpcs["web-application-vpc"].project
+  name                  = "globalrule"
+  target                = "all-apis"
+  network               = google_compute_network.vpcs["web-application-vpc"].id
+  ip_address            = google_compute_global_address.default.id
+  load_balancing_scheme = ""
+}
+
+// create CloudSQL instace
+
+# resource "google_sql_database_instance" "webapp_database" {
+#   name = "web-db-instace"
+#   database_version = "MYSQL_8"
+#   region = "us-east1"
+#   deletion_protection = false
+#   settings {
+#     disk_type = "pd-ssd"
+#     availability_type = "REGIONAL"
+#     disk_size = 100
+#     ip_configuration {
+#       ipv4_enabled = false
+#       private_network = "web-application-vpc"
+#     }
+#     tier = "db-f1-micro"
+#   }
+#   depends_on = [ google_compute_network.vpcs ]
+# }
+
+# // CLoudSQL Database instance
+
+# resource "google_sql_database" "name" {
+#   name = "web_app_db"
+#   instance = google_sql_database_instance.webapp_database.name
+#   depends_on = [ google_sql_database_instance.webapp_database ]
+
+# }
+
+# // Random username generator
+
+# resource "random_string" "db_username" {
+#   length = 8
+#   special = false
+# }
+
+# // random password generator
+# resource "random_password" "db_password" {
+#   length = 8
+# }
+
+# //sql username
+
+# resource "google_sql_user" "mysql_db_user" {
+#   name = random_string.db_username.result
+#   instance = google_sql_database_instance.webapp_database.name
+#   password = random_password.db_password.result
+#   project = var.project_id
+#   host = google_compute_instance.name.network_interface[0].network_ip
+#   depends_on = [ google_sql_database_instance.webapp_database, google_compute_instance.name ]
+# }
+
+// uncomment the above code to create CloudSQL instance and database
+
+
 
 
 
