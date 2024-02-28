@@ -53,3 +53,15 @@ variables.tf: Defines input variables used by the Terraform configuration.
 providers.tf: Defines the GCP(Google Cloud Platform) providers.
 modules/vpc/: Directory containing the VPC module.
 
+
+### Issue
+google_service_networking_connection error: Cannot modify allocated ranges in CreateConnection. Please use UpdateConnection 
+
+### Fix
+gcloud beta services vpc-peerings update \
+    --service=servicenetworking.googleapis.com \
+    --ranges=private-ip-address \
+    --network="web-application-vpc-2" \
+    --project="casye6225-dev" \
+    --force
+

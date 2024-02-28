@@ -51,56 +51,6 @@ resource "google_compute_route" "route" {
   network                = each.value.vpc_name
   depends_on = [ google_compute_network.vpcs ]
 } 
-//create compute instance
-variable "vm_name" {
-  type = string
-  default = "webapp"
-}
-
-variable "vm_zone" {
-  type = string
-  default = "us-east1-b"
-  
-}
-
-variable "vm_tags" {
-  type = list(string)
-  default = ["webapp"]
-  
-}
-
-variable "vm_image" {
-  type = string
-  default = "custom-image-success-cloud"
-  
-}
-
-variable "vm_machine_type" {
-  type = string
-  default = "e2-micro"
-  
-}
-
-variable "vm_boot_disk_mode" {
-  type = string
-  default = "READ_WRITE"
-}
-
-variable "vm_boot_disk_size" {
-  type = number
-  default = 20
-  
-}
-
-variable "vm_boot_disk_type" {
-  type = string
-  default = "pd-standard"
-}
-
-variable "network_tier" {
-  type = string
-  default = "PREMIUM"
-}
 
 resource "google_compute_instance" "name" {
   name = var.vm_name
@@ -116,69 +66,27 @@ resource "google_compute_instance" "name" {
   }
   machine_type = var.vm_machine_type
   network_interface {
-    subnetwork = google_compute_subnetwork.subnet["web-application-vpc.webapp"].id
+    subnetwork = google_compute_subnetwork.subnet["web-application-vpc-2.webapp"].id
     access_config {
       network_tier = var.network_tier
     }
   }
-  # metadata_startup_script = templatefile("./scripts/db-cred-setup.sh",{
-  #   db_user = random_string.db_username.result,
-  #   db_password = random_password.db_password.result
-  #   mysql_port = "3306"
-  #   dialect = "mysql"
-  #   datbase = "web_app_db"
-  #   port = "8080"
-  # })
-}
-
-variable "firewall_name" {
-  type = string
-  default = "allow-tcp-80-webapp"
-}
-
-variable "firewall_network" {
-  type = string
-  default = "web-application-vpc"
-  
-}
-
-variable "firwall_direction" {
-  type = string
-  default = "INGRESS"
-  
-}
-
-variable "firewall_source_ranges" {
-  type = list(string)
-  default = ["0.0.0.0/0"]
-  
-}
-
-variable "firewall_target_tags" {
-  type = list(string)
-  default = ["webapp"]
-  
-}
-
-variable "firewall_allowed_protocol" {
-  type = map(object({
-    protocol = string
-    ports = list(string)
+  metadata_startup_script = templatefile("modules/vpc/scripts/db-cred-setup.sh",{
+    db_user = google_sql_user.mysql_db_user.name
+    db_pass = random_password.db_password.result
+    db_name = google_sql_database.webapp_database.name
+    mysql_port = var.metadata_startup_script.mysql_port
+    dialect = var.metadata_startup_script.dialect
+    port = var.metadata_startup_script.port
+    db_host = google_sql_database_instance.webapp_database.private_ip_address
   })
-  )
-  default = {
-    tcp = {
-      protocol = "tcp"
-      ports = ["80","8080"]
-    }
-  }
-  
 }
+
 
 resource "google_compute_firewall" "allow-tcp-80-webapp" {
   name    = var.firewall_name
   network = var.firewall_network
-  priority = 1000
+  priority = 999
   direction = var.firwall_direction
   source_ranges = var.firewall_source_ranges
   target_tags = var.firewall_target_tags
@@ -187,48 +95,6 @@ resource "google_compute_firewall" "allow-tcp-80-webapp" {
     ports = var.firewall_allowed_protocol.tcp.ports
   }
   depends_on = [ google_compute_network.vpcs ]
-}
-
-# ssh firewall with varibles to block ssh login gcp
-variable "ssh_firewall_name" {
-  type = string
-  default = "allow-ssh-webapp"
-}
-
-variable "ssh_firewall_network" {
-  type = string
-  default = "web-application-vpc"
-  
-}
-
-variable "ssh_firwall_direction" {
-  type = string
-  default = "INGRESS"
-  
-}
-
-variable "ssh_firewall_source_ranges" {
-  type = list(string)
-  default = ["0.0.0.0/0"]
-}
-
-variable "ssh_firewall_target_tags" {
-  type = list(string)
-  default = ["webapp"]
-}
-
-variable "ssh_firewall_allowed_protocol" {
-  type = map(object({
-    protocol = string
-    ports = list(string)
-  })
-  )
-  default = {
-    tcp = {
-      protocol = "tcp"
-      ports = ["22"]
-    }
-  }
 }
 
 # block ssh login
@@ -240,136 +106,79 @@ resource "google_compute_firewall" "block-ssh-webapp" {
   source_ranges = var.ssh_firewall_source_ranges
   target_tags = var.ssh_firewall_target_tags
   deny{
-    protocol = var.ssh_firewall_allowed_protocol.tcp.protocol
-    ports = var.ssh_firewall_allowed_protocol.tcp.ports
+    protocol = var.ssh_firewall_allowed_protocol.all.protocol
   }
   depends_on = [ google_compute_network.vpcs ]
 }
 
-// test private services access setup
 
-# [START compute_internal_ip_private_access]
-resource "google_compute_global_address" "default" {
+# compute_internal_ip_private_access
+resource "google_compute_global_address" "private_ip_alloc" {
   provider     = google-beta
   project      = var.project_id
-  name         = "global-psconnect-ip"
-  address_type = "INTERNAL"
-  purpose      = "VPC_PEERING"
-  network      = google_compute_network.vpcs["web-application-vpc"].self_link
-  prefix_length = 16
+  name         = var.global_address_details.name
+  address_type = var.global_address_details.address_type
+  purpose      = var.global_address_details.purpose
+  network      = google_compute_network.vpcs["web-application-vpc-2"].id
+  prefix_length = var.global_address_details.prefix_length
 }
-# [END compute_internal_ip_private_access]
+
 
 resource "google_service_networking_connection" "private_vpc_connection" {
   provider = google-beta
-
-  network                 = google_compute_network.vpcs["web-application-vpc"].id
+  network                 = google_compute_network.vpcs["web-application-vpc-2"].id
   service                 = "servicenetworking.googleapis.com"
-  reserved_peering_ranges = [google_compute_global_address.default.name]
-  depends_on = [ google_compute_global_address.default ]
+  reserved_peering_ranges = [google_compute_global_address.private_ip_alloc.name]
+  deletion_policy = "ABANDON"
+  # depends_on = [ google_compute_global_address.private_ip_connection ]
 }
 
-# [START compute_forwarding_rule_private_access]
-resource "google_compute_global_forwarding_rule" "default" {
-  provider              = google-beta
-  project               = google_compute_network.vpcs["web-application-vpc"].project
-  name                  = "globalrule"
-  target                = "all-apis"
-  network               = google_compute_network.vpcs["web-application-vpc"].id
-  ip_address            = google_compute_global_address.default.id
-  load_balancing_scheme = ""
+resource "google_sql_database_instance" "webapp_database" {
+  name = var.db_instance.name
+  database_version = var.db_instance.database_version
+  region = var.db_instance.region
+  deletion_protection = var.db_instance.deletion_protection
+  settings {
+    disk_type = var.db_instance.settings.disk_type
+    availability_type = var.db_instance.settings.availability_type
+    disk_size = var.db_instance.settings.disk_size
+    ip_configuration {
+      ipv4_enabled = var.db_instance.settings.ip_configuration.ipv4_enabled
+      private_network = google_compute_network.vpcs["web-application-vpc-2"].id
+      enable_private_path_for_google_cloud_services = var.db_instance.settings.ip_configuration.enable_private_path_for_google_cloud_services
+    }
+    tier = var.db_instance.settings.tier
+    backup_configuration {
+      enabled = var.db_instance.backup_configuration.enabled
+      binary_log_enabled = var.db_instance.backup_configuration.binary_log_enabled
+    
+    }
+  }
+  depends_on = [ google_compute_network.vpcs["web-application-vpc-2"], google_service_networking_connection.private_vpc_connection]
 }
 
-// create CloudSQL instace
+// CLoudSQL Database instance
 
-# resource "google_sql_database_instance" "webapp_database" {
-#   name = "web-db-instace"
-#   database_version = "MYSQL_8"
-#   region = "us-east1"
-#   deletion_protection = false
-#   settings {
-#     disk_type = "pd-ssd"
-#     availability_type = "REGIONAL"
-#     disk_size = 100
-#     ip_configuration {
-#       ipv4_enabled = false
-#       private_network = "web-application-vpc"
-#     }
-#     tier = "db-f1-micro"
-#   }
-#   depends_on = [ google_compute_network.vpcs ]
-# }
+resource "google_sql_database" "webapp_database" {
+  name = var.db_name
+  instance = google_sql_database_instance.webapp_database.name
+  project = var.project_id
+  depends_on = [ google_sql_database_instance.webapp_database, random_password.db_password ]
 
-# // CLoudSQL Database instance
+}
 
-# resource "google_sql_database" "name" {
-#   name = "web_app_db"
-#   instance = google_sql_database_instance.webapp_database.name
-#   depends_on = [ google_sql_database_instance.webapp_database ]
+// random password generator
+resource "random_password" "db_password" {
+  length = 8
+  special = false
+}
 
-# }
+//sql username
 
-# // Random username generator
-
-# resource "random_string" "db_username" {
-#   length = 8
-#   special = false
-# }
-
-# // random password generator
-# resource "random_password" "db_password" {
-#   length = 8
-# }
-
-# //sql username
-
-# resource "google_sql_user" "mysql_db_user" {
-#   name = random_string.db_username.result
-#   instance = google_sql_database_instance.webapp_database.name
-#   password = random_password.db_password.result
-#   project = var.project_id
-#   host = google_compute_instance.name.network_interface[0].network_ip
-#   depends_on = [ google_sql_database_instance.webapp_database, google_compute_instance.name ]
-# }
-
-// uncomment the above code to create CloudSQL instance and database
-
-
-
-
-
-# # create vm using cusomt image in webapp subnet
-# resource "google_compute_instance" "webapp" {
-#   for_each = { for vm in local.vm_instances : "${vm.vpc_name}.${vm.vm_name}" => vm }
-
-#   name         = each.value.vm_config.vm_name
-#   machine_type = each.value.vm_config.machine_type
-#   zone         = each.value.vm_config.zone
-#   tags         = each.value.vm_config.tags
-#   boot_disk {
-#     initialize_params {
-#       image = each.value.vm_config.boot_disk.initialize_params.image 
-#     }
-#   }
-#   network_interface {
-#     subnetwork = google_compute_subnetwork.subnet["${each.value.vpc_name}.${each.value.vm_config.tags[0]}"].id
-#   }
-#   depends_on = [ google_compute_subnetwork.subnet ]
-# }
-
-# # create firewall rule to allow traffic to webapp from internet
-# resource "google_compute_firewall" "allow-tcp-80-webapp" {
-#   for_each = { for rule in local.firewall_rules : "${rule.vpc_name}.${rule.rule_name}" => rule }
-
-#   name    = each.value.rule_config.name
-#   network = each.value.rule_config.network
-#   priority = each.value.rule_config.priority
-#   direction = each.value.rule_config.direction
-#   source_ranges = each.value.rule_config.source_ranges
-#   target_tags = each.value.rule_config.target_tags
-#   allow {
-#     protocol = each.value.rule_config.allowed[0].protocol
-#     ports = each.value.rule_config.allowed[0].ports
-#   }
-#   depends_on = [ google_compute_network.vpcs ]
-# }
+resource "google_sql_user" "mysql_db_user" {
+  name = var.db_user_name
+  instance = google_sql_database_instance.webapp_database.name
+  password = random_password.db_password.result
+  project = var.project_id
+  depends_on = [ google_sql_database_instance.webapp_database ]
+}
