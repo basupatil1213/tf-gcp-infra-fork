@@ -30,7 +30,22 @@ variable "vpcs" {
   }))
 }
 
+variable "vpc_name" {
+  type = string
+  default = "web-application-vpc-2"
+  
+}
 
+variable "subnet_name" {
+  type = string
+  default = "webapp"
+  
+}
+
+variable "deletion_policy" {
+  type = string
+  default = "ABANDON"
+}
 
 # ssh firewall with varibles to block ssh login gcp
 variable "ssh_firewall_name" {
@@ -138,7 +153,7 @@ variable "vm_tags" {
 
 variable "vm_image" {
   type = string
-  default = "custom-image-success-cloud-2"
+  default = "custom-webapp-img"
   
 }
 
@@ -175,11 +190,13 @@ variable "metadata_startup_script" {
     mysql_port = string
     dialect = string
     port = string
+    db_user_name = string
   })
   default = {
     mysql_port = "3306"
     dialect = "mysql"
     port = "8080"
+    db_user_name = "webapp"
   }
 }
 

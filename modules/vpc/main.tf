@@ -66,13 +66,13 @@ resource "google_compute_instance" "name" {
   }
   machine_type = var.vm_machine_type
   network_interface {
-    subnetwork = google_compute_subnetwork.subnet["web-application-vpc-2.webapp"].id
+    subnetwork = google_compute_subnetwork.subnet["${var.vpc_name}.${var.subnet_name}"].id
     access_config {
       network_tier = var.network_tier
     }
   }
   metadata_startup_script = templatefile("modules/vpc/scripts/db-cred-setup.sh",{
-    db_user = google_sql_user.mysql_db_user.name
+    db_user = var.metadata_startup_script.db_user_name
     db_pass = random_password.db_password.result
     db_name = google_sql_database.webapp_database.name
     mysql_port = var.metadata_startup_script.mysql_port
@@ -119,17 +119,17 @@ resource "google_compute_global_address" "private_ip_alloc" {
   name         = var.global_address_details.name
   address_type = var.global_address_details.address_type
   purpose      = var.global_address_details.purpose
-  network      = google_compute_network.vpcs["web-application-vpc-2"].id
+  network      = google_compute_network.vpcs[var.vpc_name].id
   prefix_length = var.global_address_details.prefix_length
 }
 
 
 resource "google_service_networking_connection" "private_vpc_connection" {
   provider = google-beta
-  network                 = google_compute_network.vpcs["web-application-vpc-2"].id
+  network                 = google_compute_network.vpcs[var.vpc_name].id
   service                 = "servicenetworking.googleapis.com"
   reserved_peering_ranges = [google_compute_global_address.private_ip_alloc.name]
-  deletion_policy = "ABANDON"
+  deletion_policy = var.deletion_policy
   # depends_on = [ google_compute_global_address.private_ip_connection ]
 }
 
@@ -144,7 +144,7 @@ resource "google_sql_database_instance" "webapp_database" {
     disk_size = var.db_instance.settings.disk_size
     ip_configuration {
       ipv4_enabled = var.db_instance.settings.ip_configuration.ipv4_enabled
-      private_network = google_compute_network.vpcs["web-application-vpc-2"].id
+      private_network = google_compute_network.vpcs[var.vpc_name].id
       enable_private_path_for_google_cloud_services = var.db_instance.settings.ip_configuration.enable_private_path_for_google_cloud_services
     }
     tier = var.db_instance.settings.tier
@@ -154,7 +154,7 @@ resource "google_sql_database_instance" "webapp_database" {
     
     }
   }
-  depends_on = [ google_compute_network.vpcs["web-application-vpc-2"], google_service_networking_connection.private_vpc_connection]
+  depends_on = [ google_compute_network.vpcs, google_service_networking_connection.private_vpc_connection]
 }
 
 // CLoudSQL Database instance
@@ -180,5 +180,6 @@ resource "google_sql_user" "mysql_db_user" {
   instance = google_sql_database_instance.webapp_database.name
   password = random_password.db_password.result
   project = var.project_id
+  host = google_compute_instance.name.network_interface[0].network_ip
   depends_on = [ google_sql_database_instance.webapp_database ]
 }

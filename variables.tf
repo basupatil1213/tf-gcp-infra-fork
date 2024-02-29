@@ -26,7 +26,27 @@ variable "vm_tags" {
 
 variable "vm_image" {
   type    = string
-  default = "custom-image-success-cloud-2"
+  default = "custom-webapp-img"
+
+}
+
+
+variable "vpc_name" {
+  type    = string
+  default = "web-application-vpc-2"
+  
+}
+
+
+variable "subnet_name" {
+  type    = string
+  default = "webapp"
+
+}
+
+variable "deletion_policy" {
+  type    = string
+  default = "ABANDON"
 
 }
 
@@ -122,27 +142,3 @@ variable "vpcs" {
     }))
   }))
 }
-
-
-# vm_instances = map(object({
-#   vm_name = string
-#   machine_type = string
-#   zone = string
-#   tags = list(string)
-#   boot_disk = map(object({
-#     initialize_params = map(string)
-#   }))
-# }))
-# firewall_rules = map(object({
-#   name = string
-#   network = string
-#   priority = number
-#   direction = string
-#   action = string
-#   source_ranges = list(string)
-#   target_tags = list(string)
-#   allowed = list(object({
-#     protocol = string
-#     ports = list(string)
-#   }))
-# }))

@@ -17,6 +17,9 @@ module "vpcs" {
   firwall_direction      = var.firwall_direction
   firewall_source_ranges = var.firewall_source_ranges
   firewall_target_tags   = var.firewall_target_tags
+  vpc_name = var.vpc_name
+  subnet_name = var.subnet_name
+  deletion_policy = var.deletion_policy
 }
 
 
