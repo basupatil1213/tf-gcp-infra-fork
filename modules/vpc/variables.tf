@@ -286,3 +286,24 @@ variable "db_user_name" {
   type = string
   default = "webapp"
 }
+
+// dns zone name
+
+variable "dns_zone_name" {
+  type = string
+  default = "webapp-zone"
+}
+
+// dns record type
+
+variable "dns_record_type" {
+  type = string
+  default = "A"
+}
+
+// dns ttl
+
+variable "dns_record_ttl" {
+  type = number
+  default = 300
+}

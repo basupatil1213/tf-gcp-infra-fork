@@ -82,6 +82,25 @@ resource "google_compute_instance" "name" {
   })
 }
 
+// get cloud dns managed zone
+
+data "google_dns_managed_zone" "webapp_dns_zone" {
+  name = var.dns_zone_name
+  project = var.project_id
+  
+}
+
+// create a record set for the webapp
+
+resource "google_dns_record_set" "webapp_dns_record" {
+  name = data.google_dns_managed_zone.webapp_dns_zone.dns_name
+  managed_zone = data.google_dns_managed_zone.webapp_dns_zone.name
+  type = var.dns_record_type
+  ttl = var.dns_record_ttl
+  rrdatas = [google_compute_instance.name.network_interface[0].network_ip]
+  depends_on = [ google_compute_instance.name ]
+}
+
 
 resource "google_compute_firewall" "allow-tcp-80-webapp" {
   name    = var.firewall_name
