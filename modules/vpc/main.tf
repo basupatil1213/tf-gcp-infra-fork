@@ -52,6 +52,28 @@ resource "google_compute_route" "route" {
   depends_on = [ google_compute_network.vpcs ]
 } 
 
+// service account for the webapp
+resource "google_service_account" "webapp_service_account" {
+  account_id = var.service_account_name
+  display_name = var.service_account_display_name
+  project = var.project_id
+  create_ignore_already_exists = var.create_ignore_already_exists
+}
+
+resource "google_project_iam_binding" "webapp_service_account_iam_binding_logging_admin" {
+  project = var.project_id
+  role    = "roles/logging.admin"
+  members = ["serviceAccount:${google_service_account.webapp_service_account.email}"]
+  depends_on = [ google_service_account.webapp_service_account ]
+}
+
+resource "google_project_iam_binding" "webapp_service_account_iam_binding_monitoring_metric_writer" {
+  project = var.project_id
+  role    = "roles/monitoring.metricWriter"
+  members = ["serviceAccount:${google_service_account.webapp_service_account.email}"]
+  depends_on = [ google_service_account.webapp_service_account ]
+}
+
 resource "google_compute_instance" "name" {
   name = var.vm_name
   zone = var.vm_zone
@@ -80,6 +102,13 @@ resource "google_compute_instance" "name" {
     port = var.metadata_startup_script.port
     db_host = google_sql_database_instance.webapp_database.private_ip_address
   })
+
+  service_account {
+    email = google_service_account.webapp_service_account.email
+    scopes = var.service_account_scopes
+  }
+
+  depends_on = [ google_service_account.webapp_service_account]
 }
 
 // get cloud dns managed zone
@@ -97,7 +126,7 @@ resource "google_dns_record_set" "webapp_dns_record" {
   managed_zone = data.google_dns_managed_zone.webapp_dns_zone.name
   type = var.dns_record_type
   ttl = var.dns_record_ttl
-  rrdatas = [google_compute_instance.name.network_interface[0].network_ip]
+  rrdatas = [google_compute_instance.name.network_interface[0].access_config[0].nat_ip]
   depends_on = [ google_compute_instance.name ]
 }
 

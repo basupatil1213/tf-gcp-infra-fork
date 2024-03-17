@@ -159,8 +159,7 @@ variable "vm_image" {
 
 variable "vm_machine_type" {
   type = string
-  default = "e2-micro"
-  
+  default = "custom-6-4096"
 }
 
 variable "vm_boot_disk_mode" {
@@ -306,4 +305,32 @@ variable "dns_record_type" {
 variable "dns_record_ttl" {
   type = number
   default = 300
+}
+
+// 
+
+variable "create_ignore_already_exists" {
+  type = bool
+  default = true
+}
+
+// service account id
+
+variable "service_account_name" {
+  type = string
+  default = "webapp-sa"
+}
+
+// service account display name
+
+variable "service_account_display_name" {
+  type = string
+  default = "webapp-service-account"
+}
+
+// service account scopes
+
+variable "service_account_scopes" {
+  type = list(string)
+  default = ["userinfo-email","cloud-platform"]
 }
