@@ -15,6 +15,7 @@ MYSQL_PASSWORD=${db_pass}
 MYSQL_DATABASE=${db_name}
 DIALECT=${dialect}
 MYSQL_PORT=${mysql_port}
+NODE_ENV="production"
 EOF
 
 # Reload the systemd manager configuration
