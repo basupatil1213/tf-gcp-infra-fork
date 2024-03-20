@@ -7,7 +7,7 @@ cd /opt/projects/webapp
 sudo touch .env
 
 # write the environment variables to the .env file, take values from the terraform output
-cat <<EOF | sudo tee .env
+cat <<EOF | sudo tee .env > /dev/null
 PORT=${port}
 MYSQL_HOST=${db_host}
 MYSQL_USER=${db_user}
