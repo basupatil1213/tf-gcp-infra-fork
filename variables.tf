@@ -34,7 +34,7 @@ variable "vm_image" {
 variable "vpc_name" {
   type    = string
   default = "web-application-vpc-2"
-  
+
 }
 
 
@@ -52,7 +52,7 @@ variable "deletion_policy" {
 
 variable "vm_machine_type" {
   type    = string
-  default = "e2-micro"
+  default = "custom-6-4096"
 
 }
 
@@ -141,4 +141,8 @@ variable "vpcs" {
       priority         = number
     }))
   }))
+}
+
+variable "mailgun_api_key" {
+  type = string
 }

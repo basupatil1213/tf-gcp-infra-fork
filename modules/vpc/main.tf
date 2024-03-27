@@ -74,6 +74,15 @@ resource "google_project_iam_binding" "webapp_service_account_iam_binding_monito
   depends_on = [ google_service_account.webapp_service_account ]
 }
 
+// IAM roles for pubsup topic message publisher
+
+resource "google_project_iam_binding" "pubsub_topic_publisher" {
+  project = var.project_id
+  role    = "roles/pubsub.publisher"
+  members = ["serviceAccount:${google_service_account.webapp_service_account.email}"]
+  depends_on = [ google_service_account.webapp_service_account ]
+}
+
 resource "google_compute_instance" "name" {
   name = var.vm_name
   zone = var.vm_zone
@@ -86,7 +95,7 @@ resource "google_compute_instance" "name" {
     }
     mode = var.vm_boot_disk_mode
   }
-  machine_type = var.vm_machine_type
+  machine_type =  var.vm_machine_type
   network_interface {
     subnetwork = google_compute_subnetwork.subnet["${var.vpc_name}.${var.subnet_name}"].id
     access_config {
@@ -228,6 +237,150 @@ resource "google_sql_user" "mysql_db_user" {
   instance = google_sql_database_instance.webapp_database.name
   password = random_password.db_password.result
   project = var.project_id
-  host = google_compute_instance.name.network_interface[0].network_ip
+  host = "%" // google_compute_instance.name.network_interface[0].network_ip
   depends_on = [ google_sql_database_instance.webapp_database ]
 }
+
+
+
+// pubsub topic
+resource "google_pubsub_topic" "topic" {
+  name = "functions2-topic"
+}
+
+
+// service account for the cloud function
+resource "google_service_account" "account" {
+  account_id = "gcf-sa"
+  display_name = "Cloud Function Service Account"
+}
+
+
+
+// IAM roles for the service account for the cloud function
+
+
+
+// get the storage bucket
+
+variable "storage_bucket_name" {
+  type = string
+  default = "basupatil-final-test" // "webapp-storage-bucket"
+}
+
+data "google_storage_bucket" "bucket" {
+  name = var.storage_bucket_name
+}
+
+// get the storage object
+
+variable "storage_object_name" {
+  type = string
+  default = "Archive.zip"     //"webapp-storage-object"
+}
+
+data "google_storage_bucket_object" "object" {
+  name = var.storage_object_name
+  bucket = data.google_storage_bucket.bucket.name
+  
+}
+
+// serverless vpc connector
+
+resource "google_vpc_access_connector" "connector" {
+  name          = "vpc-con"
+  ip_cidr_range = "10.8.0.0/28"
+  network       = google_compute_network.vpcs[var.vpc_name].id
+}
+
+// cloud function
+
+variable "entry_point" {
+  type = string
+  default = "sendVerificationEmail"
+  
+}
+
+variable "from_address" {
+  type = string
+  default = "noreply@basavarajpatil.me"
+}
+
+variable "domain_name" {
+  type = string
+  default = "basavarajpatil.me"
+}
+
+variable "mailgun_api_key" {
+  type = string
+}
+
+resource "google_cloudfunctions2_function" "function" {
+  name = "function-v2"
+  location = "us-east1"
+  description = "a new function"
+
+  build_config {
+    runtime = "nodejs20"
+    entry_point = var.entry_point  # Set the entry point 
+    source {
+      storage_source {
+        bucket = "basupatil-final-test"
+        object = "Archive.zip"
+      }
+
+    }
+    
+
+    environment_variables = {
+      MYSQL_HOST  = "${google_compute_instance.name.network_interface[0].network_ip}"
+      MYSQL_USER  = "${google_sql_user.mysql_db_user.name}"
+      MYSQL_PASSWORD = "${random_password.db_password.result}"
+      MYSQL_DATABASE = "${google_sql_database.webapp_database.name}"
+      FROM_ADDRESS = "${var.from_address}"
+      DOMAIN_NAME = "${var.domain_name}"
+      MAILGUN_API_KEY = "${var.mailgun_api_key}"
+    }
+  }
+
+  service_config {
+    max_instance_count  = 1
+    available_memory    = "256M"
+    timeout_seconds     = 60
+    ingress_settings = "ALLOW_ALL"
+    all_traffic_on_latest_revision = true
+    service_account_email = google_service_account.account.email
+    vpc_connector = google_vpc_access_connector.connector.name
+    vpc_connector_egress_settings = "PRIVATE_RANGES_ONLY"
+    environment_variables = {
+      MYSQL_HOST  = "${google_compute_instance.name.network_interface[0].network_ip}"
+      MYSQL_USER  = "${google_sql_user.mysql_db_user.name}"
+      MYSQL_PASSWORD = "${random_password.db_password.result}"
+      MYSQL_DATABASE = "${google_sql_database.webapp_database.name}"
+      FROM_ADDRESS = "${var.from_address}"
+      DOMAIN_NAME = "${var.domain_name}"
+      MAILGUN_API_KEY = "${var.mailgun_api_key}"
+      WEBAPP_URL = "basvarajpatil.me"
+    }
+
+  }
+  
+  
+  event_trigger {
+    trigger_region = "us-central1"
+    event_type = "google.cloud.pubsub.topic.v1.messagePublished"
+    pubsub_topic = google_pubsub_topic.topic.id
+    retry_policy = "RETRY_POLICY_RETRY"
+  }
+
+  depends_on = [ google_vpc_access_connector.connector ]
+}
+
+resource "google_cloudfunctions2_function_iam_member" "member" {
+  project = google_cloudfunctions2_function.function.project
+  cloud_function = google_cloudfunctions2_function.function.name
+  role = "roles/cloudfunctions.admin"
+  member = "serviceAccount:${google_service_account.account.email}"
+  depends_on = [ google_cloudfunctions2_function.function ]
+}
+

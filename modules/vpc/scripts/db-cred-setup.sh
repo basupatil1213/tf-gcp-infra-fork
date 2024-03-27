@@ -16,6 +16,7 @@ MYSQL_DATABASE=${db_name}
 DIALECT=${dialect}
 MYSQL_PORT=${mysql_port}
 NODE_ENV="production"
+WEBAPP_URL = basavarajpatil.me
 EOF
 
 # Reload the systemd manager configuration
