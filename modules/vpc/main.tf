@@ -242,10 +242,15 @@ resource "google_sql_user" "mysql_db_user" {
 }
 
 
+variable "pubsub_topic_name" {
+  type = string
+  default = "verify_email"
+}
+
 
 // pubsub topic
 resource "google_pubsub_topic" "topic" {
-  name = "functions2-topic"
+  name = var.pubsub_topic_name
 }
 
 
@@ -291,6 +296,7 @@ resource "google_vpc_access_connector" "connector" {
   name          = "vpc-con"
   ip_cidr_range = "10.8.0.0/28"
   network       = google_compute_network.vpcs[var.vpc_name].id
+  region =  var.region
 }
 
 // cloud function
@@ -315,25 +321,36 @@ variable "mailgun_api_key" {
   type = string
 }
 
+variable "webapp_url" {
+  type = string
+  default = "basvarajpatil.me"
+}
+
+variable "cloud_function_name" {
+  type = string
+  default = "sendVerificationEmail"
+  
+}
+
 resource "google_cloudfunctions2_function" "function" {
-  name = "function-v2"
-  location = "us-east1"
-  description = "a new function"
+  name = var.cloud_function_name
+  location = var.region
+  description = "Cloud Function to send verification email"
 
   build_config {
     runtime = "nodejs20"
     entry_point = var.entry_point  # Set the entry point 
     source {
       storage_source {
-        bucket = "basupatil-final-test"
-        object = "Archive.zip"
+        bucket = var.storage_bucket_name
+        object = var.storage_object_name
       }
 
     }
     
 
     environment_variables = {
-      MYSQL_HOST  = "${google_compute_instance.name.network_interface[0].network_ip}"
+      MYSQL_HOST  = "${google_sql_database_instance.webapp_database.private_ip_address}"
       MYSQL_USER  = "${google_sql_user.mysql_db_user.name}"
       MYSQL_PASSWORD = "${random_password.db_password.result}"
       MYSQL_DATABASE = "${google_sql_database.webapp_database.name}"
@@ -353,33 +370,33 @@ resource "google_cloudfunctions2_function" "function" {
     vpc_connector = google_vpc_access_connector.connector.name
     vpc_connector_egress_settings = "PRIVATE_RANGES_ONLY"
     environment_variables = {
-      MYSQL_HOST  = "${google_compute_instance.name.network_interface[0].network_ip}"
+      MYSQL_HOST  = "${google_sql_database_instance.webapp_database.private_ip_address}"
       MYSQL_USER  = "${google_sql_user.mysql_db_user.name}"
       MYSQL_PASSWORD = "${random_password.db_password.result}"
       MYSQL_DATABASE = "${google_sql_database.webapp_database.name}"
       FROM_ADDRESS = "${var.from_address}"
       DOMAIN_NAME = "${var.domain_name}"
       MAILGUN_API_KEY = "${var.mailgun_api_key}"
-      WEBAPP_URL = "basvarajpatil.me"
+      WEBAPP_URL = "${var.webapp_url}"
     }
 
   }
   
   
   event_trigger {
-    trigger_region = "us-central1"
+    trigger_region = var.region
     event_type = "google.cloud.pubsub.topic.v1.messagePublished"
     pubsub_topic = google_pubsub_topic.topic.id
     retry_policy = "RETRY_POLICY_RETRY"
   }
 
-  depends_on = [ google_vpc_access_connector.connector ]
+  depends_on = [ google_vpc_access_connector.connector, google_sql_database_instance.webapp_database, google_sql_database.webapp_database, google_sql_user.mysql_db_user, google_pubsub_topic.topic, google_service_account.account]
 }
 
 resource "google_cloudfunctions2_function_iam_member" "member" {
   project = google_cloudfunctions2_function.function.project
   cloud_function = google_cloudfunctions2_function.function.name
-  role = "roles/cloudfunctions.admin"
+  role = "roles/cloudfunctions.invoker" // "roles/cloudfunctions.developer"
   member = "serviceAccount:${google_service_account.account.email}"
   depends_on = [ google_cloudfunctions2_function.function ]
 }

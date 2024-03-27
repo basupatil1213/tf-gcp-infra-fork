@@ -21,6 +21,9 @@ module "vpcs" {
   subnet_name            = var.subnet_name
   deletion_policy        = var.deletion_policy
   mailgun_api_key        = var.mailgun_api_key
+  storage_bucket_name   = var.storage_bucket_name
+  storage_object_name  = var.storage_object_name
+  cloud_function_name = var.cloud_function_name
 }
 
 

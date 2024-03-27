@@ -146,3 +146,18 @@ variable "vpcs" {
 variable "mailgun_api_key" {
   type = string
 }
+
+variable "storage_bucket_name" {
+  type = string
+  default = "basupatil-final-test"
+}
+
+variable "storage_object_name" {
+  type = string
+  default = "Archive.zip"
+}
+
+variable "cloud_function_name" {
+  type = string
+  default = "sendVerificationEmail"
+}
