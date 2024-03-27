@@ -14,7 +14,7 @@ variable "vm_name" {
 
 variable "vm_zone" {
   type    = string
-  default = "us-east1-b"
+  default = "us-central1-b"
 
 }
 
@@ -159,5 +159,5 @@ variable "storage_object_name" {
 
 variable "cloud_function_name" {
   type    = string
-  default = "sendVerificationEmail"
+  default = "cf-send-verification-email"
 }

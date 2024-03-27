@@ -141,7 +141,7 @@ variable "vm_name" {
 
 variable "vm_zone" {
   type = string
-  default = "us-east1-b"
+  default = "us-central1-b"
   
 }
 
@@ -248,7 +248,7 @@ variable "db_instance" {
   })
   default = {
     name = "webapp-database"
-    region = "us-east1"
+    region = "us-central1"
     database_version = "MYSQL_8_0"
     deletion_protection = false
     settings = {

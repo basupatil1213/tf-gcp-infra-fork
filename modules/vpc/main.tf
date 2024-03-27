@@ -83,6 +83,14 @@ resource "google_project_iam_binding" "pubsub_topic_publisher" {
   depends_on = [ google_service_account.webapp_service_account ]
 }
 
+resource "google_pubsub_topic_iam_binding" "binding" {
+  project = var.project_id
+  topic   = google_pubsub_topic.topic.name
+  role    = "roles/pubsub.publisher"
+  members = ["serviceAccount:${google_service_account.webapp_service_account.email}"]
+  depends_on = [google_pubsub_topic.topic]
+}
+
 resource "google_compute_instance" "name" {
   name = var.vm_name
   zone = var.vm_zone
@@ -328,7 +336,7 @@ variable "webapp_url" {
 
 variable "cloud_function_name" {
   type = string
-  default = "sendVerificationEmail"
+  default = "cf-send-verification-email"
   
 }
 
@@ -396,7 +404,7 @@ resource "google_cloudfunctions2_function" "function" {
 resource "google_cloudfunctions2_function_iam_member" "member" {
   project = google_cloudfunctions2_function.function.project
   cloud_function = google_cloudfunctions2_function.function.name
-  role = "roles/cloudfunctions.invoker" // "roles/cloudfunctions.developer"
+  role = "roles/cloudfunctions.developer"
   member = "serviceAccount:${google_service_account.account.email}"
   depends_on = [ google_cloudfunctions2_function.function ]
 }
