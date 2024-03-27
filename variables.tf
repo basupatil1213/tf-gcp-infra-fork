@@ -148,16 +148,16 @@ variable "mailgun_api_key" {
 }
 
 variable "storage_bucket_name" {
-  type = string
+  type    = string
   default = "basupatil-final-test"
 }
 
 variable "storage_object_name" {
-  type = string
+  type    = string
   default = "Archive.zip"
 }
 
 variable "cloud_function_name" {
-  type = string
+  type    = string
   default = "sendVerificationEmail"
 }
