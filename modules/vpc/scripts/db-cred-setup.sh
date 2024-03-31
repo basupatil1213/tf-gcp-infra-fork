@@ -17,6 +17,7 @@ DIALECT=${dialect}
 MYSQL_PORT=${mysql_port}
 NODE_ENV="production"
 WEBAPP_URL = basavarajpatil.me
+PUBSUB_TOPIC_URL = ${pubsub_url}
 EOF
 
 # Reload the systemd manager configuration

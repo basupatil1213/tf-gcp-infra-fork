@@ -118,6 +118,7 @@ resource "google_compute_instance" "name" {
     dialect = var.metadata_startup_script.dialect
     port = var.metadata_startup_script.port
     db_host = google_sql_database_instance.webapp_database.private_ip_address
+    pubsub_url = "projects/${var.project_id}/topics/${var.pubsub_topic_name}"
   })
 
   service_account {
