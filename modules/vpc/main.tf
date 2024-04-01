@@ -83,14 +83,6 @@ resource "google_project_iam_binding" "pubsub_topic_publisher" {
   depends_on = [ google_service_account.webapp_service_account ]
 }
 
-resource "google_pubsub_topic_iam_binding" "binding" {
-  project = var.project_id
-  topic   = google_pubsub_topic.topic.name
-  role    = "roles/pubsub.publisher"
-  members = ["serviceAccount:${google_service_account.webapp_service_account.email}"]
-  depends_on = [google_pubsub_topic.topic]
-}
-
 resource "google_compute_instance" "name" {
   name = var.vm_name
   zone = var.vm_zone
@@ -306,6 +298,8 @@ resource "google_vpc_access_connector" "connector" {
   ip_cidr_range = "10.8.0.0/28"
   network       = google_compute_network.vpcs[var.vpc_name].id
   region =  var.region
+  max_instances = 3
+  min_instances = 2
 }
 
 // cloud function
