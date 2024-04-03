@@ -441,12 +441,18 @@ resource "google_compute_region_health_check" "webapp_health_check" {
 
 // google compute instance group manager
 
+variable "distribution_policy_zones" {
+  type = list(string)
+  default = ["us-west1-a", "us-west1-b", "us-west1-c"]
+  
+}
+
 resource "google_compute_region_instance_group_manager" "webappigm" {
   name = "webappigm"
 
   base_instance_name         = "webapp-instance"
-  region                     = "us-west1"
-  distribution_policy_zones  = ["us-west1-a", "us-west1-b", "us-west1-c"]
+  region                     = var.region
+  distribution_policy_zones  = var.distribution_policy_zones
 
   version {
     instance_template = google_compute_region_instance_template.webapp_ce_temp.self_link
@@ -473,7 +479,7 @@ resource "google_compute_region_instance_group_manager" "webappigm" {
 resource "google_compute_region_autoscaler" "webapp_autoscaler" {
   name = "webapp-autoscaler"
   target = google_compute_region_instance_group_manager.webappigm.id
-  region = "us-west1"
+  region = var.region
   autoscaling_policy {
     max_replicas = 6
     min_replicas = 3

@@ -179,3 +179,8 @@ variable "certificate_path" {
 variable "private_key_path" {
   type = string
 }
+
+variable "distribution_policy_zones" {
+  type    = list(string)
+  default = ["us-west1-a", "us-west1-b", "us-west1-c"]
+}
