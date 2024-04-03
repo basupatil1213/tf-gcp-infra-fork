@@ -117,7 +117,7 @@ variable "firewall_allowed_protocol" {
   default = {
     tcp = {
       protocol = "tcp"
-      ports    = ["80"]
+      ports    = ["22"]
     }
   }
 }

@@ -118,18 +118,18 @@ resource "google_compute_firewall" "allow-tcp-80-webapp" {
 }
 
 # block ssh login
-# resource "google_compute_firewall" "block-ssh-webapp" {
-#   name    = var.ssh_firewall_name
-#   network = var.ssh_firewall_network
-#   priority = 1001
-#   direction = var.ssh_firwall_direction
-#   source_ranges = var.ssh_firewall_source_ranges
-#   target_tags = var.ssh_firewall_target_tags
-#   deny{
-#     protocol = var.ssh_firewall_allowed_protocol.all.protocol
-#   }
-#   depends_on = [ google_compute_network.vpcs ]
-# }
+resource "google_compute_firewall" "block-ssh-webapp" {
+  name    = var.ssh_firewall_name
+  network = var.ssh_firewall_network
+  priority = 1001
+  direction = var.ssh_firwall_direction
+  source_ranges = var.ssh_firewall_source_ranges
+  target_tags = var.ssh_firewall_target_tags
+  deny{
+    protocol = var.ssh_firewall_allowed_protocol.all.protocol
+  }
+  depends_on = [ google_compute_network.vpcs ]
+}
 
 
 # compute_internal_ip_private_access
@@ -468,7 +468,7 @@ resource "google_compute_region_autoscaler" "webapp_autoscaler" {
     min_replicas = 3
     cooldown_period = 60
     cpu_utilization {
-      target = 0.5
+      target = 0.05
     }
   }
 }
@@ -573,49 +573,91 @@ resource "google_compute_address" "lb_private_ip_alloc" {
 
 // forwarding rule for the load balancer
 
+variable "load_balancing_scheme" {
+  type = string
+  default = "EXTERNAL_MANAGED"
+  
+}
+
+variable "lb_port_range" {
+  type = string
+  default = "443"
+  
+}
+
+variable "lb_port_protocol" {
+  type = string
+  default = "TCP"
+  
+}
+
+variable "lb_network_tier" {
+  type = string
+  default = "PREMIUM"
+  
+}
+
 resource "google_compute_forwarding_rule" "webapp_forwarding_rule" {
   name = "webapp-forwarding-rule"
   provider = google-beta
   region = var.region
   target = google_compute_region_target_https_proxy.webapp_target_https_proxy.id
   # target = google_compute_region_target_http_proxy.webapp_target_http_proxy.id
-  load_balancing_scheme = "EXTERNAL_MANAGED"
+  load_balancing_scheme = var.load_balancing_scheme
   ip_address = google_compute_address.lb_private_ip_alloc.id
-  port_range = "443"
-  ip_protocol = "TCP"
+  port_range = var.lb_port_range
+  ip_protocol = var.lb_port_protocol
   depends_on = [ google_compute_subnetwork.proxy_only ]
   project = var.project_id
-  network_tier = "PREMIUM"
+  network_tier = var.lb_network_tier
   network = google_compute_network.vpcs[var.vpc_name].id
 }
 
 // firewall rule for the load balancer
 
+variable "firewall_port" {
+  type = list(string)
+  default = ["8080"]
+  
+}
+
+variable "as_firewall_source_ranges" {
+  type = list(string)
+  default = ["130.211.0.0/22", "35.191.0.0/16"]
+  
+}
+
+variable "target_tags" {
+  type = list(string)
+  default = ["webapp"]
+  
+}
+
 resource "google_compute_firewall" "default" {
   name = "fw-allow-health-check"
   allow {
-    protocol = "tcp"
-    ports = ["8080"]
+    protocol = var.lb_port_protocol
+    ports = var.firewall_port
   }
   direction     = "INGRESS"
   network       = google_compute_network.vpcs[var.vpc_name].id
   priority      = 666
-  source_ranges = ["130.211.0.0/22", "35.191.0.0/16"]
-  target_tags   = ["webapp"]
+  source_ranges = var.as_firewall_source_ranges
+  target_tags   = var.target_tags
 }
 
 
 resource "google_compute_firewall" "allow_proxy" {
   name = "fw-allow-proxies"
   allow {
-    ports    = ["8080","80","443"]
+    ports    = var.firewall_port
     protocol = "tcp"
   }
   direction     = "INGRESS"
   network       = google_compute_network.vpcs[var.vpc_name].id
   priority      = 666
   source_ranges = [var.proxy_subnet_ip_cidr_range]
-  target_tags   = ["webapp"]
+  target_tags   = var.target_tags
 }
 
 
