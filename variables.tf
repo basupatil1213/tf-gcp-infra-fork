@@ -184,3 +184,8 @@ variable "distribution_policy_zones" {
   type    = list(string)
   default = ["us-west1-a", "us-west1-b", "us-west1-c"]
 }
+
+variable "target_utilization" {
+  type    = number
+  default = 0.8
+}

@@ -255,13 +255,29 @@ data "google_storage_bucket_object" "object" {
 
 // serverless vpc connector
 
+variable "vpc_access_ip_range" {
+  type = string
+  default = "10.8.0.0/28"
+}
+
+variable "min_instances" {
+  type = number
+  default = 2
+  
+}
+
+variable "max_instances" {
+  type = number
+  default = 3
+}
+
 resource "google_vpc_access_connector" "connector" {
   name          = "vpc-con"
-  ip_cidr_range = "10.8.0.0/28"
+  ip_cidr_range = var.vpc_access_ip_range
   network       = google_compute_network.vpcs[var.vpc_name].id
   region =  var.region
-  max_instances = 3
-  min_instances = 2
+  max_instances = var.max_instances
+  min_instances = var.min_instances
 }
 
 // cloud function
@@ -476,16 +492,40 @@ resource "google_compute_region_instance_group_manager" "webappigm" {
 
 // autoscaler for the instance group
 
+variable "target_utilization" {
+  type = number
+  default = 0.05
+  
+}
+
+variable "max_replicas" {
+  type = number
+  default = 6
+  
+}
+
+variable "min_replicas" {
+  type = number
+  default = 3
+  
+}
+
+variable "cooldown_period" {
+  type = number
+  default = 60
+  
+}
+
 resource "google_compute_region_autoscaler" "webapp_autoscaler" {
   name = "webapp-autoscaler"
   target = google_compute_region_instance_group_manager.webappigm.id
   region = var.region
   autoscaling_policy {
-    max_replicas = 6
-    min_replicas = 3
-    cooldown_period = 60
+    max_replicas = var.max_replicas
+    min_replicas = var.min_replicas
+    cooldown_period = var.cooldown_period
     cpu_utilization {
-      target = 0.05
+      target = var.target_utilization
     }
   }
 }
