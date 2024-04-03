@@ -25,6 +25,8 @@ module "vpcs" {
   storage_object_name        = var.storage_object_name
   cloud_function_name        = var.cloud_function_name
   proxy_subnet_ip_cidr_range = var.proxy_subnet_ip_cidr_range
+  certificate_path = var.certificate_path
+  private_key_path = var.private_key_path
 }
 
 

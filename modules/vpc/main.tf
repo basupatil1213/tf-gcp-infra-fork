@@ -83,43 +83,6 @@ resource "google_project_iam_binding" "pubsub_topic_publisher" {
   depends_on = [ google_service_account.webapp_service_account ]
 }
 
-resource "google_compute_instance" "name" {
-  name = var.vm_name
-  zone = var.vm_zone
-  tags = var.vm_tags
-  boot_disk {
-    initialize_params {
-      image = var.vm_image
-      size  = var.vm_boot_disk_size
-      type  = var.vm_boot_disk_type
-    }
-    mode = var.vm_boot_disk_mode
-  }
-  machine_type =  var.vm_machine_type
-  network_interface {
-    subnetwork = google_compute_subnetwork.subnet["${var.vpc_name}.${var.subnet_name}"].id
-    access_config {
-      network_tier = var.network_tier
-    }
-  }
-  metadata_startup_script = templatefile("modules/vpc/scripts/db-cred-setup.sh",{
-    db_user = var.metadata_startup_script.db_user_name
-    db_pass = random_password.db_password.result
-    db_name = google_sql_database.webapp_database.name
-    mysql_port = var.metadata_startup_script.mysql_port
-    dialect = var.metadata_startup_script.dialect
-    port = var.metadata_startup_script.port
-    db_host = google_sql_database_instance.webapp_database.private_ip_address
-    pubsub_url = "projects/${var.project_id}/topics/${var.pubsub_topic_name}"
-  })
-
-  service_account {
-    email = google_service_account.webapp_service_account.email
-    scopes = var.service_account_scopes
-  }
-
-  depends_on = [ google_service_account.webapp_service_account]
-}
 
 // get cloud dns managed zone
 
@@ -136,8 +99,7 @@ resource "google_dns_record_set" "webapp_dns_record" {
   managed_zone = data.google_dns_managed_zone.webapp_dns_zone.name
   type = var.dns_record_type
   ttl = var.dns_record_ttl
-  rrdatas = [google_compute_address.lb_private_ip_alloc.address] // [google_compute_instance.name.network_interface[0].access_config[0].nat_ip]
-  depends_on = [ google_compute_instance.name,  ]
+  rrdatas = [google_compute_address.lb_private_ip_alloc.address]
 }
 
 
@@ -238,7 +200,7 @@ resource "google_sql_user" "mysql_db_user" {
   instance = google_sql_database_instance.webapp_database.name
   password = random_password.db_password.result
   project = var.project_id
-  host = "%" // google_compute_instance.name.network_interface[0].network_ip
+  host = "%"
   depends_on = [ google_sql_database_instance.webapp_database ]
 }
 
@@ -567,11 +529,37 @@ resource "google_compute_region_url_map" "webapp_url_map" {
 
 // target http proxy for the load balancer
 
-resource "google_compute_region_target_http_proxy" "webapp_target_http_proxy" {
-  name = "webapp-target-http-proxy"
+# resource "google_compute_region_target_http_proxy" "webapp_target_http_proxy" {
+#   name = "webapp-target-http-proxy"
+#   url_map = google_compute_region_url_map.webapp_url_map.id
+#   region = var.region
+# }
+
+// target https proxy for the load balancer
+
+resource "google_compute_region_target_https_proxy" "webapp_target_https_proxy" {
+  name = "webapp-target-https-proxy"
   url_map = google_compute_region_url_map.webapp_url_map.id
+  ssl_certificates = [google_compute_region_ssl_certificate.webapp_ssl_cert.id]
   region = var.region
 }
+
+variable "certificate_path" {
+  type = string
+}
+
+variable "private_key_path" {
+  type = string
+}
+
+resource "google_compute_region_ssl_certificate" "webapp_ssl_cert" {
+  name = "webapp-ssl-cert"
+  private_key = file(var.private_key_path)
+  certificate = file(var.certificate_path)
+  region = var.region
+}
+
+
 
 // reserved ip address for the load balancer
 
@@ -589,10 +577,11 @@ resource "google_compute_forwarding_rule" "webapp_forwarding_rule" {
   name = "webapp-forwarding-rule"
   provider = google-beta
   region = var.region
-  target = google_compute_region_target_http_proxy.webapp_target_http_proxy.id
+  target = google_compute_region_target_https_proxy.webapp_target_https_proxy.id
+  # target = google_compute_region_target_http_proxy.webapp_target_http_proxy.id
   load_balancing_scheme = "EXTERNAL_MANAGED"
   ip_address = google_compute_address.lb_private_ip_alloc.id
-  port_range = "80"
+  port_range = "443"
   ip_protocol = "TCP"
   depends_on = [ google_compute_subnetwork.proxy_only ]
   project = var.project_id

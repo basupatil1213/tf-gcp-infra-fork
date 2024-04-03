@@ -169,3 +169,13 @@ variable "proxy_subnet_ip_cidr_range" {
   default = "10.0.4.0/24"
 
 }
+
+// certificate variables
+
+variable "certificate_path" {
+  type = string
+}
+
+variable "private_key_path" {
+  type = string
+}
