@@ -36,3 +36,7 @@ terraform.rc
 
 #ignore lock files
 *lock.hcl
+
+#ignore certifcate files
+*.crt
+*.key
