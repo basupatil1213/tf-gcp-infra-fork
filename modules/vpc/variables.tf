@@ -128,7 +128,7 @@ variable "firewall_allowed_protocol" {
   default = {
     tcp = {
       protocol = "tcp"
-      ports = ["80","8080",22]
+      ports = ["80","8080","22"]
     }
   }
   
@@ -141,7 +141,7 @@ variable "vm_name" {
 
 variable "vm_zone" {
   type = string
-  default = "us-central1-b"
+  default = "us-west1-b"
   
 }
 
@@ -175,12 +175,12 @@ variable "vm_boot_disk_size" {
 
 variable "vm_boot_disk_type" {
   type = string
-  default = "pd-standard"
+  default = "pd-balanced"
 }
 
 variable "network_tier" {
   type = string
-  default = "PREMIUM"
+  default = "STANDARD"
 }
 
 // map of variables for the metadata startup script
@@ -248,7 +248,7 @@ variable "db_instance" {
   })
   default = {
     name = "webapp-database"
-    region = "us-central1"
+    region = "us-west1"
     database_version = "MYSQL_8_0"
     deletion_protection = false
     settings = {

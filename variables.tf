@@ -14,7 +14,7 @@ variable "vm_name" {
 
 variable "vm_zone" {
   type    = string
-  default = "us-central1-b"
+  default = "us-west1-b"
 
 }
 
@@ -160,4 +160,12 @@ variable "storage_object_name" {
 variable "cloud_function_name" {
   type    = string
   default = "cf-send-verification-email"
+}
+
+// load balancer variables
+
+variable "proxy_subnet_ip_cidr_range" {
+  type    = string
+  default = "10.0.4.0/24"
+
 }

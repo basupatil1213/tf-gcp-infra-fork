@@ -69,3 +69,5 @@ gcloud beta services vpc-peerings update \
 
 Cloud DNS API
 
+Certificate Manager API
+

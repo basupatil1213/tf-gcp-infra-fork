@@ -136,8 +136,8 @@ resource "google_dns_record_set" "webapp_dns_record" {
   managed_zone = data.google_dns_managed_zone.webapp_dns_zone.name
   type = var.dns_record_type
   ttl = var.dns_record_ttl
-  rrdatas = [google_compute_instance.name.network_interface[0].access_config[0].nat_ip]
-  depends_on = [ google_compute_instance.name ]
+  rrdatas = [google_compute_address.lb_private_ip_alloc.address] // [google_compute_instance.name.network_interface[0].access_config[0].nat_ip]
+  depends_on = [ google_compute_instance.name,  ]
 }
 
 
@@ -156,18 +156,18 @@ resource "google_compute_firewall" "allow-tcp-80-webapp" {
 }
 
 # block ssh login
-resource "google_compute_firewall" "block-ssh-webapp" {
-  name    = var.ssh_firewall_name
-  network = var.ssh_firewall_network
-  priority = 1000
-  direction = var.ssh_firwall_direction
-  source_ranges = var.ssh_firewall_source_ranges
-  target_tags = var.ssh_firewall_target_tags
-  deny{
-    protocol = var.ssh_firewall_allowed_protocol.all.protocol
-  }
-  depends_on = [ google_compute_network.vpcs ]
-}
+# resource "google_compute_firewall" "block-ssh-webapp" {
+#   name    = var.ssh_firewall_name
+#   network = var.ssh_firewall_network
+#   priority = 1001
+#   direction = var.ssh_firwall_direction
+#   source_ranges = var.ssh_firewall_source_ranges
+#   target_tags = var.ssh_firewall_target_tags
+#   deny{
+#     protocol = var.ssh_firewall_allowed_protocol.all.protocol
+#   }
+#   depends_on = [ google_compute_network.vpcs ]
+# }
 
 
 # compute_internal_ip_private_access
@@ -403,4 +403,323 @@ resource "google_cloudfunctions2_function_iam_member" "member" {
   member = "serviceAccount:${google_service_account.account.email}"
   depends_on = [ google_cloudfunctions2_function.function ]
 }
+
+
+// google compute instance template
+
+resource "google_compute_region_instance_template" "webapp_ce_temp" {
+  name = "webapp-ce-temp"
+  description = "Webapp Compute Engine Instance Template"
+  tags = ["webapp"]
+  instance_description = "Webapp Compute Engine Instance"
+  machine_type = var.vm_machine_type
+  can_ip_forward = false
+  scheduling {
+    automatic_restart   = true
+    on_host_maintenance = "MIGRATE"
+  }
+
+  disk {
+    source_image      = var.vm_image
+    auto_delete       = true
+    boot              = true
+  }
+
+  network_interface {
+    network = google_compute_network.vpcs[var.vpc_name].id
+    subnetwork = google_compute_subnetwork.subnet["${var.vpc_name}.${var.subnet_name}"].id
+    access_config {
+      network_tier = var.network_tier
+    }
+  }
+
+  metadata_startup_script = templatefile("modules/vpc/scripts/db-cred-setup.sh",{
+    db_user = var.metadata_startup_script.db_user_name
+    db_pass = random_password.db_password.result
+    db_name = google_sql_database.webapp_database.name
+    mysql_port = var.metadata_startup_script.mysql_port
+    dialect = var.metadata_startup_script.dialect
+    port = var.metadata_startup_script.port
+    db_host = google_sql_database_instance.webapp_database.private_ip_address
+    pubsub_url = "projects/${var.project_id}/topics/${var.pubsub_topic_name}"
+  })
+
+  service_account {
+    email = google_service_account.webapp_service_account.email
+    scopes = var.service_account_scopes
+  }
+
+}
+
+// health check for the instance group
+
+resource "google_compute_region_health_check" "webapp_health_check" {
+  name = "webapp-health-check"
+  check_interval_sec = 10
+  timeout_sec = 10
+  healthy_threshold = 10
+  unhealthy_threshold = 10
+  http_health_check {
+    request_path = "/healthz"
+    port         = "8080"
+  }
+  region = var.region
+}
+
+// google compute instance group manager
+
+resource "google_compute_region_instance_group_manager" "webappigm" {
+  name = "webappigm"
+
+  base_instance_name         = "webapp-instance"
+  region                     = "us-west1"
+  distribution_policy_zones  = ["us-west1-a", "us-west1-b", "us-west1-c"]
+
+  version {
+    instance_template = google_compute_region_instance_template.webapp_ce_temp.self_link
+  }
+
+  all_instances_config {
+    
+  }
+
+  named_port {
+    name = "webapp-port"
+    port = 8080
+  }
+
+  auto_healing_policies {
+    health_check      = google_compute_region_health_check.webapp_health_check.id
+    initial_delay_sec = 300
+  }
+}
+
+
+// autoscaler for the instance group
+
+resource "google_compute_region_autoscaler" "webapp_autoscaler" {
+  name = "webapp-autoscaler"
+  target = google_compute_region_instance_group_manager.webappigm.id
+  region = "us-west1"
+  autoscaling_policy {
+    max_replicas = 6
+    min_replicas = 3
+    cooldown_period = 60
+    cpu_utilization {
+      target = 0.5
+    }
+  }
+}
+
+// proxy subnet for load balancer
+
+variable "proxy_subnet_ip_cidr_range" {
+  type = string
+}
+resource "google_compute_subnetwork" "proxy_only" {
+  name          = "proxy-only-subnet"
+  ip_cidr_range = var.proxy_subnet_ip_cidr_range
+  network       = google_compute_network.vpcs[var.vpc_name].id
+  purpose       = "REGIONAL_MANAGED_PROXY"
+  region        = var.region
+  role          = "ACTIVE"
+}
+
+// backend service for the load balancer
+
+resource "google_compute_region_backend_service" "webapp_backend_service" {
+  name = "webapp-backend-service"
+  protocol = "HTTP"
+  session_affinity      = "NONE"
+  timeout_sec = 60
+  port_name = "webapp-port"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  health_checks = [google_compute_region_health_check.webapp_health_check.id]
+  region = var.region
+  backend {
+    group = google_compute_region_instance_group_manager.webappigm.instance_group
+    balancing_mode  = "UTILIZATION"
+    capacity_scaler = 1.0
+  }
+  
+}
+
+
+// url map for the load balancer
+
+resource "google_compute_region_url_map" "webapp_url_map" {
+  name = "webapp-url-map"
+  default_service = google_compute_region_backend_service.webapp_backend_service.id
+  region = var.region
+  # host_rule {
+  #   hosts = ["*"]
+  #   path_matcher = "allpaths"
+  # }
+  # path_matcher {
+  #   name = "allpaths"
+  #   default_service = google_compute_region_backend_service.webapp_backend_service.id
+  #   path_rule {
+  #     paths = ["/*"]
+  #     service = google_compute_region_backend_service.webapp_backend_service.id
+  #   }
+  # }
+}
+
+// target http proxy for the load balancer
+
+resource "google_compute_region_target_http_proxy" "webapp_target_http_proxy" {
+  name = "webapp-target-http-proxy"
+  url_map = google_compute_region_url_map.webapp_url_map.id
+  region = var.region
+}
+
+// reserved ip address for the load balancer
+
+resource "google_compute_address" "lb_private_ip_alloc" {
+  name = "webapp-private-ip-alloc"
+  address_type = "EXTERNAL"
+  region = var.region
+  network_tier = var.network_tier
+}
+
+
+// forwarding rule for the load balancer
+
+resource "google_compute_forwarding_rule" "webapp_forwarding_rule" {
+  name = "webapp-forwarding-rule"
+  provider = google-beta
+  region = var.region
+  target = google_compute_region_target_http_proxy.webapp_target_http_proxy.id
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  ip_address = google_compute_address.lb_private_ip_alloc.id
+  port_range = "80"
+  ip_protocol = "TCP"
+  depends_on = [ google_compute_subnetwork.proxy_only ]
+  project = var.project_id
+  network_tier = "PREMIUM"
+  network = google_compute_network.vpcs[var.vpc_name].id
+}
+
+// firewall rule for the load balancer
+
+resource "google_compute_firewall" "default" {
+  name = "fw-allow-health-check"
+  allow {
+    protocol = "tcp"
+    ports = ["8080"]
+  }
+  direction     = "INGRESS"
+  network       = google_compute_network.vpcs[var.vpc_name].id
+  priority      = 666
+  source_ranges = ["130.211.0.0/22", "35.191.0.0/16"]
+  target_tags   = ["webapp"]
+}
+
+
+resource "google_compute_firewall" "allow_proxy" {
+  name = "fw-allow-proxies"
+  allow {
+    ports    = ["8080","80","443"]
+    protocol = "tcp"
+  }
+  direction     = "INGRESS"
+  network       = google_compute_network.vpcs[var.vpc_name].id
+  priority      = 666
+  source_ranges = [var.proxy_subnet_ip_cidr_range]
+  target_tags   = ["webapp"]
+}
+
+
+// regional load balancer
+
+
+
+// ssl certificate for the load balancer
+
+# resource "tls_private_key" "private_key" {
+#   algorithm = "RSA"
+#   rsa_bits  = 2048
+# }
+
+# resource "tls_self_signed_cert" "self_sign_cert" {
+#   # key_algorithm   = tls_private_key.default.algorithm
+#   private_key_pem = tls_private_key.private_key.private_key_pem
+#   subject {
+#     common_name  = "basavarajpatil.me"
+#     organization = "Production"
+#   }
+
+#   validity_period_hours = 400
+
+#   allowed_uses = [
+#     "key_encipherment",
+#     "digital_signature",
+#     "server_auth",
+#   ]
+# }
+
+# resource "google_compute_region_ssl_certificate" "gce_lb_cert" {
+#   name        = "gce-lb-cert"
+#   project     = var.project_id
+#   private_key = tls_private_key.private_key.private_key_pem
+#   certificate = tls_self_signed_cert.self_sign_cert.cert_pem
+# }
+
+// global load balancer from gcp
+
+# variable service_port{
+#   type = number
+#   default = 8080
+
+# }
+
+# variable service_port_name{
+#   type = string
+#   default = "webapp-port"
+# }
+
+
+# module "gce-lb-http" {
+#   source            = "GoogleCloudPlatform/lb-http/google"
+#   version           = "~> 9.0"
+
+#   project           = var.project_id
+#   name              = "group-https-lb"
+#   target_tags       = ["webapp"]
+#   network = google_compute_network.vpcs[var.vpc_name].id
+#   backends = {
+#     default = {
+#       port                            = var.service_port
+#       protocol                        = "HTTP"
+#       port_name                       = var.service_port_name
+#       timeout_sec                     = 10
+#       enable_cdn                      = false
+
+
+#       health_check = {
+#         request_path        = "/healthz"
+#         port                = var.service_port
+#       }
+
+#       log_config = {
+#         enable = false
+#         sample_rate = 1.0
+#       }
+
+#       groups = [
+#         {
+#           # Each node pool instance group should be added to the backend.
+#           group                        = google_compute_region_instance_group_manager.webappigm.instance_group
+#         },
+#       ]
+
+#       iap_config = {
+#         enable               = false
+#       }
+#     }
+#   }
+# }
+
+
+
 
