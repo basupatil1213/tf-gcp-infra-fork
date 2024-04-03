@@ -75,7 +75,7 @@ variable "vm_boot_disk_type" {
 
 variable "network_tier" {
   type    = string
-  default = "PREMIUM"
+  default = "STANDARD"
 }
 
 

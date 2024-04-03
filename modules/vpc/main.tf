@@ -415,6 +415,17 @@ resource "google_compute_region_instance_template" "webapp_ce_temp" {
 
 // health check for the instance group
 
+variable "health_check_path" {
+  type = string
+  default = "/healthz"
+  
+}
+
+variable "health_check_port" {
+  type = string
+  default = "8080"
+  
+}
 resource "google_compute_region_health_check" "webapp_health_check" {
   name = "webapp-health-check"
   check_interval_sec = 10
@@ -422,8 +433,8 @@ resource "google_compute_region_health_check" "webapp_health_check" {
   healthy_threshold = 10
   unhealthy_threshold = 10
   http_health_check {
-    request_path = "/healthz"
-    port         = "8080"
+    request_path = var.health_check_path
+    port         = var.health_check_port
   }
   region = var.region
 }
@@ -593,7 +604,7 @@ variable "lb_port_protocol" {
 
 variable "lb_network_tier" {
   type = string
-  default = "PREMIUM"
+  default = "STANDARD"
   
 }
 
