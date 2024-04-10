@@ -189,3 +189,8 @@ variable "target_utilization" {
   type    = number
   default = 0.8
 }
+
+variable "key_ring_name" {
+  type    = string
+  default = "webapp-key-ring-100"
+}

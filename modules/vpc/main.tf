@@ -60,6 +60,18 @@ resource "google_service_account" "webapp_service_account" {
   create_ignore_already_exists = var.create_ignore_already_exists
 }
 
+// crypto encrypter decrypter role for the service account
+
+resource "google_kms_crypto_key_iam_binding" "crypto_key" {
+  crypto_key_id = google_kms_crypto_key.vm_crypto_key.id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+
+  members = [
+    "serviceAccount:service-586858243800@compute-system.iam.gserviceaccount.com",
+  ]
+}
+
+
 resource "google_project_iam_binding" "webapp_service_account_iam_binding_logging_admin" {
   project = var.project_id
   role    = "roles/logging.admin"
@@ -158,6 +170,7 @@ resource "google_sql_database_instance" "webapp_database" {
   database_version = var.db_instance.database_version
   region = var.db_instance.region
   deletion_protection = var.db_instance.deletion_protection
+
   settings {
     disk_type = var.db_instance.settings.disk_type
     availability_type = var.db_instance.settings.availability_type
@@ -173,7 +186,11 @@ resource "google_sql_database_instance" "webapp_database" {
       binary_log_enabled = var.db_instance.backup_configuration.binary_log_enabled
     
     }
+    
+
   }
+  
+  encryption_key_name = google_kms_crypto_key.sql_crypto_key.id
   depends_on = [ google_compute_network.vpcs, google_service_networking_connection.private_vpc_connection]
 }
 
@@ -236,22 +253,68 @@ variable "storage_bucket_name" {
   default = "basupatil-final-test" // "webapp-storage-bucket"
 }
 
-data "google_storage_bucket" "bucket" {
-  name = var.storage_bucket_name
-}
+# data "google_storage_bucket" "bucket" {
+#   name = var.storage_bucket_name
+# }
 
 // get the storage object
+
+# Create a CMEK for Cloud Storage Buckets
+resource "google_kms_crypto_key" "storage_bucket_crypto_key" {
+  name            = "storage-crypto-key"
+  key_ring        = google_kms_key_ring.webapp_key_ring.id
+  rotation_period = "2592000s" # 30 days
+   lifecycle {
+    prevent_destroy = false
+  }
+  depends_on = [ google_kms_key_ring.webapp_key_ring ]
+}
+
+data "google_storage_project_service_account" "gcs_account" {}
+
+# Grant permission to the service account to use the Cloud KMS key
+resource "google_kms_crypto_key_iam_binding" "binding" {
+  crypto_key_id = google_kms_crypto_key.storage_bucket_crypto_key.id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  members       = ["serviceAccount:${data.google_storage_project_service_account.gcs_account.email_address}"]
+}
+
+# Create the Cloud Storage bucket with encryption enabled using the Cloud KMS key
+resource "google_storage_bucket" "function_code_buckets" {
+  name     = var.storage_bucket_name
+  location = var.region
+  storage_class = "STANDARD"
+
+  encryption {
+    default_kms_key_name = google_kms_crypto_key.storage_bucket_crypto_key.id
+  }
+}
+
+# Upload an object to the Cloud Storage bucket
 
 variable "storage_object_name" {
   type = string
   default = "Archive.zip"     //"webapp-storage-object"
 }
 
-data "google_storage_bucket_object" "object" {
-  name = var.storage_object_name
-  bucket = data.google_storage_bucket.bucket.name
+variable "storage_object_source" {
+  type = string
+  default = "/Users/basavarajpatil/Developer/csye6225/tf-gcp-infra-fork/modules/vpc/Archive.zip"
   
 }
+resource "google_storage_bucket_object" "object" {
+  name   = var.storage_object_name
+  bucket = google_storage_bucket.function_code_buckets.name
+  source = var.storage_object_source
+}
+
+
+
+# data "google_storage_bucket_object" "object" {
+#   name = var.storage_object_name
+#   bucket = data.google_storage_bucket.bucket.name
+  
+# }
 
 // serverless vpc connector
 
@@ -382,7 +445,6 @@ resource "google_cloudfunctions2_function_iam_member" "member" {
   depends_on = [ google_cloudfunctions2_function.function ]
 }
 
-
 // google compute instance template
 
 resource "google_compute_region_instance_template" "webapp_ce_temp" {
@@ -401,6 +463,10 @@ resource "google_compute_region_instance_template" "webapp_ce_temp" {
     source_image      = var.vm_image
     auto_delete       = true
     boot              = true
+
+    disk_encryption_key {
+      kms_key_self_link = google_kms_crypto_key.vm_crypto_key.id
+    }
   }
 
   network_interface {
@@ -426,8 +492,13 @@ resource "google_compute_region_instance_template" "webapp_ce_temp" {
     email = google_service_account.webapp_service_account.email
     scopes = var.service_account_scopes
   }
-
+  depends_on = [ google_kms_crypto_key_iam_binding.crypto_key ]
 }
+
+// 
+// service-586858243800@compute-system.iam.gserviceaccount.com
+
+
 
 // health check for the instance group
 
@@ -460,6 +531,7 @@ resource "google_compute_region_health_check" "webapp_health_check" {
 variable "distribution_policy_zones" {
   type = list(string)
   default = ["us-west1-a", "us-west1-b", "us-west1-c"]
+  # default = ["us-west1-a", "us-west1-b"]
   
 }
 
@@ -506,7 +578,7 @@ variable "max_replicas" {
 
 variable "min_replicas" {
   type = number
-  default = 3
+  default = 2
   
 }
 
@@ -716,6 +788,143 @@ resource "google_compute_firewall" "allow_proxy" {
   source_ranges = [var.proxy_subnet_ip_cidr_range]
   target_tags   = var.target_tags
 }
+
+// key ring for the cloud kms
+
+variable "key_ring_name" {
+  type = string
+  default = "webapp-keyring-2"
+  
+}
+resource "google_kms_key_ring" "webapp_key_ring" {
+  name     = "webapp-keyring-3000" // var.key_ring_name
+  location = var.region
+  project = var.project_id
+  lifecycle {
+    prevent_destroy = false
+  }
+}
+
+// crypto key for the cloud kms
+
+//purpose
+
+variable "crypto_key_purpose" {
+  type = string
+  default = "ENCRYPT_DECRYPT"
+  
+}
+
+//retention period for 30 days
+
+variable "rotation_period" {
+  type = string
+  default = "2592000s"
+  
+}
+
+
+
+// vm crypto key
+
+variable "vm_crypto_key_name" {
+  type = string
+  default = "webapp-vm-crypto-key-1"
+  
+}
+
+
+
+resource "google_kms_crypto_key" "vm_crypto_key" {
+  name     = var.vm_crypto_key_name
+  key_ring = google_kms_key_ring.webapp_key_ring.id
+  purpose  = var.crypto_key_purpose
+  rotation_period = var.rotation_period
+  lifecycle {
+    prevent_destroy = false
+  }
+}
+
+// cloud sql crypto key
+
+variable "sql_crypto_key_name" {
+  type = string
+  default = "webapp-sql-crypto-key-1"
+  
+}
+
+resource "google_kms_crypto_key" "sql_crypto_key" {
+  name     = var.sql_crypto_key_name
+  key_ring = google_kms_key_ring.webapp_key_ring.id
+  purpose  = var.crypto_key_purpose
+  rotation_period = var.rotation_period
+  lifecycle {
+    prevent_destroy = false
+  }
+}
+
+
+// cloud sql service account
+
+variable "cloud_sql_service" {
+  type = string
+  default = "sqladmin.googleapis.com"
+}
+
+resource "google_project_service_identity" "gcp_sa_cloud_sql" {
+  provider = google-beta
+  service  = var.cloud_sql_service
+  project = var.project_id
+}
+
+// cloud sql crypto key iam binding
+
+variable "cloud_sql_crypto_key_iam_binding_role" {
+  type = string
+  default = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  
+}
+resource "google_kms_crypto_key_iam_binding" "cloud_sql_crypto_key_iam_binding" {
+  provider      = google-beta
+  crypto_key_id = google_kms_crypto_key.sql_crypto_key.id
+  role          = var.cloud_sql_crypto_key_iam_binding_role
+
+  members = [
+    "serviceAccount:${google_project_service_identity.gcp_sa_cloud_sql.email}",
+  ]
+}
+
+
+// cloud storage crypto key
+
+# variable "storage_crypto_key_name" {
+#   type = string
+#   default = "webapp-storage-crypto-key-1"
+  
+# }
+
+# resource "google_kms_crypto_key" "storage_crypto_key" {
+#   name     = var.storage_crypto_key_name
+#   key_ring = google_kms_key_ring.webapp_key_ring.id
+#   purpose  = var.crypto_key_purpose
+#   rotation_period = var.rotation_period
+#   lifecycle {
+#     prevent_destroy = false
+#   }
+# }
+
+// update the bucket with the crypto key
+
+# resource "google_storage_bucket" "cloud_function_bucket"{
+#   name = var.storage_bucket_name
+#   location = var.region
+#   project = var.project_id
+#   encryption {
+#     default_kms_key_name = google_kms_crypto_key.storage_crypto_key.name
+#   }
+# }
+
+
 
 
 // regional load balancer

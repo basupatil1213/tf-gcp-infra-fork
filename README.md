@@ -53,6 +53,11 @@ variables.tf: Defines input variables used by the Terraform configuration.
 providers.tf: Defines the GCP(Google Cloud Platform) providers.
 modules/vpc/: Directory containing the VPC module.
 
+### Importing already existing resources
+
+Example: Cloud storage bucket
+
+terraform import google_storage_bucket.my_bucket your-bucket-name
 
 ### Issue
 google_service_networking_connection error: Cannot modify allocated ranges in CreateConnection. Please use UpdateConnection 

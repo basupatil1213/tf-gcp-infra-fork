@@ -27,7 +27,9 @@ module "vpcs" {
   proxy_subnet_ip_cidr_range = var.proxy_subnet_ip_cidr_range
   certificate_path           = var.certificate_path
   private_key_path           = var.private_key_path
-  distribution_policy_zones = var.distribution_policy_zones
+  distribution_policy_zones  = var.distribution_policy_zones
+  target_utilization         = var.target_utilization
+  key_ring_name              = var.key_ring_name
 }
 
 

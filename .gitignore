@@ -40,3 +40,6 @@ terraform.rc
 #ignore certifcate files
 *.crt
 *.key
+
+#ignore .zip files
+*.zip
