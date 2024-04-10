@@ -62,35 +62,70 @@ resource "google_service_account" "webapp_service_account" {
 
 // crypto encrypter decrypter role for the service account
 
+variable "encrypter_decrypter_role" {
+  type = string
+  default = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  
+}
+
+// compute engine service agent role for the service account
+
+variable "gce_service_agent_email" {
+  type = string
+  default = "service-586858243800@compute-system.iam.gserviceaccount.com"
+}
+
 resource "google_kms_crypto_key_iam_binding" "crypto_key" {
   crypto_key_id = google_kms_crypto_key.vm_crypto_key.id
-  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  role          = var.encrypter_decrypter_role
 
   members = [
-    "serviceAccount:service-586858243800@compute-system.iam.gserviceaccount.com",
+    "serviceAccount:${var.gce_service_agent_email}",
   ]
 }
 
 
+// IAM roles for the service account
+
+variable "webapp_loggin_role" {
+  type = string
+  default = "roles/logging.admin"
+  
+}
+
 resource "google_project_iam_binding" "webapp_service_account_iam_binding_logging_admin" {
   project = var.project_id
-  role    = "roles/logging.admin"
+  role    = var.webapp_loggin_role
   members = ["serviceAccount:${google_service_account.webapp_service_account.email}"]
   depends_on = [ google_service_account.webapp_service_account ]
 }
 
+// monitoring metric writer role
+
+variable "monitoring_metric_writer_role" {
+  type = string
+  default = "roles/monitoring.metricWriter"
+  
+}
+
 resource "google_project_iam_binding" "webapp_service_account_iam_binding_monitoring_metric_writer" {
   project = var.project_id
-  role    = "roles/monitoring.metricWriter"
+  role    = var.monitoring_metric_writer_role
   members = ["serviceAccount:${google_service_account.webapp_service_account.email}"]
   depends_on = [ google_service_account.webapp_service_account ]
 }
 
 // IAM roles for pubsup topic message publisher
 
+variable "pubsub_topic_publisher_role" {
+  type = string
+  default = "roles/pubsub.publisher"
+  
+}
+
 resource "google_project_iam_binding" "pubsub_topic_publisher" {
   project = var.project_id
-  role    = "roles/pubsub.publisher"
+  role    = var.pubsub_topic_publisher_role
   members = ["serviceAccount:${google_service_account.webapp_service_account.email}"]
   depends_on = [ google_service_account.webapp_service_account ]
 }
@@ -259,11 +294,18 @@ variable "storage_bucket_name" {
 
 // get the storage object
 
+// rotaion period for the key
+
+variable "rotation_period" {
+  type = string
+  default = "2592000s"
+}
+
 # Create a CMEK for Cloud Storage Buckets
 resource "google_kms_crypto_key" "storage_bucket_crypto_key" {
   name            = "storage-crypto-key"
   key_ring        = google_kms_key_ring.webapp_key_ring.id
-  rotation_period = "2592000s" # 30 days
+  rotation_period = var.rotation_period # 30 days
    lifecycle {
     prevent_destroy = false
   }
@@ -275,15 +317,23 @@ data "google_storage_project_service_account" "gcs_account" {}
 # Grant permission to the service account to use the Cloud KMS key
 resource "google_kms_crypto_key_iam_binding" "binding" {
   crypto_key_id = google_kms_crypto_key.storage_bucket_crypto_key.id
-  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  role          = var.encrypter_decrypter_role
   members       = ["serviceAccount:${data.google_storage_project_service_account.gcs_account.email_address}"]
 }
 
 # Create the Cloud Storage bucket with encryption enabled using the Cloud KMS key
+
+// storage class
+
+variable "storage_class" {
+  type = string
+  default = "STANDARD"
+}
+
 resource "google_storage_bucket" "function_code_buckets" {
   name     = var.storage_bucket_name
   location = var.region
-  storage_class = "STANDARD"
+  storage_class = var.storage_class
 
   encryption {
     default_kms_key_name = google_kms_crypto_key.storage_bucket_crypto_key.id
@@ -306,6 +356,7 @@ resource "google_storage_bucket_object" "object" {
   name   = var.storage_object_name
   bucket = google_storage_bucket.function_code_buckets.name
   source = var.storage_object_source
+  depends_on = [ google_storage_bucket.function_code_buckets ]
 }
 
 
@@ -376,13 +427,86 @@ variable "cloud_function_name" {
   
 }
 
+// run time
+
+variable "runtime" {
+  type = string
+  default = "nodejs20"
+}
+
+// service config variables
+
+// 1. max_instance_count
+
+variable "max_instance_count" {
+  type = number
+  default = 1
+  
+}
+
+// 2. available_memory
+
+variable "available_memory" {
+  type = string
+  default = "256M"
+  
+}
+
+// 3. timeout_seconds
+
+variable "timeout_seconds" {
+  type = number
+  default = 60
+  
+}
+
+// 4. ingress_settings
+
+variable "ingress_settings" {
+  type = string
+  default = "ALLOW_ALL"
+  
+}
+// 5. all_traffic_on_latest_revision
+
+variable "all_traffic_on_latest_revision" {
+  type = bool
+  default = true
+  
+}
+// 6. egrees_settings
+
+variable "egress_settings" {
+  type = string
+  default = "PRIVATE_RANGES_ONLY"
+  
+}
+
+// event trigger variables
+
+// 2. event_type
+
+variable "event_type" {
+  type = string
+  default = "google.cloud.pubsub.topic.v1.messagePublished"
+  
+}
+
+// 4. retry_policy
+
+variable "retry_policy" {
+  type = string
+  default = "RETRY_POLICY_RETRY"
+  
+}
+
 resource "google_cloudfunctions2_function" "function" {
   name = var.cloud_function_name
   location = var.region
   description = "Cloud Function to send verification email"
 
   build_config {
-    runtime = "nodejs20"
+    runtime = var.runtime
     entry_point = var.entry_point  # Set the entry point 
     source {
       storage_source {
@@ -405,14 +529,14 @@ resource "google_cloudfunctions2_function" "function" {
   }
 
   service_config {
-    max_instance_count  = 1
-    available_memory    = "256M"
-    timeout_seconds     = 60
-    ingress_settings = "ALLOW_ALL"
-    all_traffic_on_latest_revision = true
+    max_instance_count  = var.max_instance_count
+    available_memory    = var.available_memory
+    timeout_seconds     = var.timeout_seconds
+    ingress_settings = var.ingress_settings
+    all_traffic_on_latest_revision = var.all_traffic_on_latest_revision
     service_account_email = google_service_account.account.email
     vpc_connector = google_vpc_access_connector.connector.name
-    vpc_connector_egress_settings = "PRIVATE_RANGES_ONLY"
+    vpc_connector_egress_settings = var.egress_settings
     environment_variables = {
       MYSQL_HOST  = "${google_sql_database_instance.webapp_database.private_ip_address}"
       MYSQL_USER  = "${google_sql_user.mysql_db_user.name}"
@@ -429,40 +553,91 @@ resource "google_cloudfunctions2_function" "function" {
   
   event_trigger {
     trigger_region = var.region
-    event_type = "google.cloud.pubsub.topic.v1.messagePublished"
+    event_type = var.event_type
     pubsub_topic = google_pubsub_topic.topic.id
-    retry_policy = "RETRY_POLICY_RETRY"
+    retry_policy = var.retry_policy
   }
 
-  depends_on = [ google_vpc_access_connector.connector, google_sql_database_instance.webapp_database, google_sql_database.webapp_database, google_sql_user.mysql_db_user, google_pubsub_topic.topic, google_service_account.account]
+  depends_on = [ google_vpc_access_connector.connector, google_sql_database_instance.webapp_database, google_sql_database.webapp_database, google_sql_user.mysql_db_user, google_pubsub_topic.topic, google_service_account.account, google_storage_bucket.function_code_buckets, google_storage_bucket_object.object]
+}
+
+// cloud function role
+
+variable "cloud_function_role" {
+  type = string
+  default = "roles/cloudfunctions.developer"
+  
 }
 
 resource "google_cloudfunctions2_function_iam_member" "member" {
   project = google_cloudfunctions2_function.function.project
   cloud_function = google_cloudfunctions2_function.function.name
-  role = "roles/cloudfunctions.developer"
+  role = var.cloud_function_role
   member = "serviceAccount:${google_service_account.account.email}"
   depends_on = [ google_cloudfunctions2_function.function ]
 }
 
 // google compute instance template
 
+variable "instance_template_name" {
+  type = string
+  default = "webapp-ce-temp"
+  
+}
+
+variable "template_tags" {
+  type = list(string)
+  default = ["webapp"]
+}
+
+variable "can_ip_forward" {
+  type = bool
+  default = false
+  
+}
+
+variable "automated_restart" {
+  type = bool
+  default = true
+  
+}
+
+variable "on_host_maintenance" {
+  type = string
+  default = "MIGRATE"
+  
+}
+
+// disk related variables
+
+variable "disk_auto_delete" {
+  type = bool
+  default = true
+  
+}
+
+variable "disk_boot" {
+  type = bool
+  default = true
+  
+}
+
 resource "google_compute_region_instance_template" "webapp_ce_temp" {
-  name = "webapp-ce-temp"
+  name = var.instance_template_name
   description = "Webapp Compute Engine Instance Template"
-  tags = ["webapp"]
+  tags = var.template_tags
   instance_description = "Webapp Compute Engine Instance"
   machine_type = var.vm_machine_type
-  can_ip_forward = false
+  can_ip_forward = var.can_ip_forward
   scheduling {
-    automatic_restart   = true
-    on_host_maintenance = "MIGRATE"
+    automatic_restart   = var.automated_restart
+    on_host_maintenance = var.on_host_maintenance
   }
 
   disk {
     source_image      = var.vm_image
-    auto_delete       = true
-    boot              = true
+    auto_delete       = var.disk_auto_delete
+    boot              = var.disk_boot
 
     disk_encryption_key {
       kms_key_self_link = google_kms_crypto_key.vm_crypto_key.id
@@ -530,8 +705,7 @@ resource "google_compute_region_health_check" "webapp_health_check" {
 
 variable "distribution_policy_zones" {
   type = list(string)
-  default = ["us-west1-a", "us-west1-b", "us-west1-c"]
-  # default = ["us-west1-a", "us-west1-b"]
+  default = ["us-west1-a", "us-west1-b"]
   
 }
 
@@ -793,11 +967,10 @@ resource "google_compute_firewall" "allow_proxy" {
 
 variable "key_ring_name" {
   type = string
-  default = "webapp-keyring-2"
   
 }
 resource "google_kms_key_ring" "webapp_key_ring" {
-  name     = "webapp-keyring-3000" // var.key_ring_name
+  name     = var.key_ring_name
   location = var.region
   project = var.project_id
   lifecycle {
@@ -817,11 +990,11 @@ variable "crypto_key_purpose" {
 
 //retention period for 30 days
 
-variable "rotation_period" {
-  type = string
-  default = "2592000s"
+# variable "rotation_period" {
+#   type = string
+#   default = "2592000s"
   
-}
+# }
 
 
 
